@@ -11,7 +11,20 @@
 #include "common.h"
 #include "service.h"
 
+#include "pdbparse.h"
+
 enum class eventSignal {signalSetEvent, signalResetEvent};
+
+void checkPdb() {
+    const auto rpcrt4Info = pdb_parse::get_module_info("C:\\Windows\\System32\\rpcrt4.dll", false);
+	std::string pdbPath = get_pdb_path(rpcrt4Info, FALSE);
+	if (pdbPath.empty()) {
+		_tprintf(TEXT("Error: rpcrt4.pdb not available. Ensure this system can access http://msdl.microsoft.com or download the proper pdb and place in C:\\Windows\\System32\\\n"));
+	}
+	return;
+
+}
+
 
 std::wstring extractKeyValueFromConfigLineInner(const std::wstring& confLine, const std::wstring& key)
 {
@@ -363,6 +376,7 @@ void cmdUpdate(std::wstring& param)
 
 void cmdPid(int procNum)
 {
+	checkPdb();
 	elevateCurrentProcessToSystem();
 	createAllGloblEvents();
 	readConfigAndMapToMemory();
@@ -408,6 +422,7 @@ void cmdInstallRPCFLT()
 void cmdInstallRPCFW()
 {
 	_tprintf(TEXT("installing RPCFW...\n"));
+	checkPdb();
 	elevateCurrentProcessToSystem();
 	
 	writeFileToSysfolder(getFullPathOfFile(std::wstring(RPC_FW_DLL_NAME)), RPC_FW_DLL_NAME);
@@ -638,3 +653,4 @@ int _tmain(int argc, wchar_t* argv[])
 	}
 	return 0;
 }
+

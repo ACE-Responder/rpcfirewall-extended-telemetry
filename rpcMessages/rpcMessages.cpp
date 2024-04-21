@@ -316,7 +316,7 @@ bool rpcFunctionCalledEvent(bool callSuccessful, const RpcEventParameters& event
 {
     bool bSuccess = false;
     WORD eventType = EVENTLOG_AUDIT_SUCCESS;
-    LPCWSTR aInsertions[15] = {nullptr};
+    LPCWSTR aInsertions[17] = {nullptr};
    
     if (!callSuccessful) {
         eventType = EVENTLOG_AUDIT_FAILURE;
@@ -345,6 +345,8 @@ bool rpcFunctionCalledEvent(bool callSuccessful, const RpcEventParameters& event
     aInsertions[12] = (wchar_t*)eventParams.destAddress.c_str();
     aInsertions[13] = (wchar_t*)eventParams.dstPort.c_str();
     aInsertions[14] = (wchar_t*)eventParams.clientSID.c_str();
+    aInsertions[15] = (wchar_t*)eventParams.extendedTelemetry.c_str();
+    aInsertions[16] = (wchar_t*)eventParams.extendedTelemetryJson.c_str();
 
     if (hEventLog) {
         
@@ -354,7 +356,7 @@ bool rpcFunctionCalledEvent(bool callSuccessful, const RpcEventParameters& event
             0,               
             RPC_SERVER_CALL,           
             nullptr,                      
-            15,                        
+            17,                        
             0,                         
             aInsertions,               
             nullptr                       
@@ -363,7 +365,6 @@ bool rpcFunctionCalledEvent(bool callSuccessful, const RpcEventParameters& event
 
     return bSuccess;
 }
-
 
 bool APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,

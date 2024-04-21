@@ -18,7 +18,18 @@
 #include "rpcWrappers.hpp"
 #include <sddl.h>
 
+#include "internalRpcDecompTypeDefs.h"
+#include "IdlFunction.h"
+#include "pdbparse.h"
+
 #pragma comment(lib, "Ws2_32.lib")
+
+#ifdef _WIN64
+BOOL is64Bit = TRUE;
+#else
+BOOL is64Bit = FALSE;
+#endif
+
 
 HMODULE myhModule;
 
@@ -58,6 +69,14 @@ std::basic_string<T> to_tstring(U arg)
 		static_assert(statAssert);
 	}
 }
+
+typedef void (__fastcall *NdrpServerOutInit)(struct _MIDL_STUB_MESSAGE*);
+NdrpServerOutInit realNdrpServerOutInit;
+void __fastcall detouredNdrpServerOutInit(_MIDL_STUB_MESSAGE* midlStubMessage);
+
+typedef void (__fastcall *Ndr64pServerOutInit)(struct _MIDL_STUB_MESSAGE*);
+Ndr64pServerOutInit realNdr64pServerOutInit;
+void __fastcall detouredNdr64pServerOutInit(_MIDL_STUB_MESSAGE* midlStubMessage);
 
 static long (WINAPI* realNdrStubCall2)(void* pThis, void* pChannel, PRPC_MESSAGE pRpcMsg, unsigned long* pdwStubPhase) = NdrStubCall2;
 long WINAPI detouredNdrStubCall2(void* pThis, void* pChannel, PRPC_MESSAGE pRpcMsg, unsigned long* pdwStubPhase);
@@ -1123,53 +1142,104 @@ void mainStart()
 		return;
 	}
 
-	WRITE_DEBUG_MSG(TEXT("RPCFirewall confirmed relevant RPC server."));
+	HANDLE hRpcrt4 = GetModuleHandle(L"rpcrt4");
+    const auto rpcrt4Info = pdb_parse::get_module_info("C:\\Windows\\System32\\rpcrt4.dll", FALSE);
+    const auto offsetNdrpServerOutInit = pdb_parse::get_address_from_symbol("NdrpServerOutInit", rpcrt4Info, FALSE);
+    const auto offsetNdr64pServerOutInit= pdb_parse::get_address_from_symbol("Ndr64pServerOutInit", rpcrt4Info, FALSE);
 
-	DisableThreadLibraryCalls(myhModule);
-	DetourTransactionBegin();
-	DetourUpdateThread(GetCurrentThread());
+    realNdrpServerOutInit = (NdrpServerOutInit)((uintptr_t)hRpcrt4 + offsetNdrpServerOutInit);
+    realNdr64pServerOutInit = (Ndr64pServerOutInit)((uintptr_t)hRpcrt4 + offsetNdr64pServerOutInit);
 
-	detouredFunctions = true;
+	std::wostringstream woaddr;
+	woaddr << "realNdrpServerOutInit: " << realNdrpServerOutInit;
+	woaddr << " ";
+	woaddr << "realNdr64pServerOutInit: " << realNdr64pServerOutInit;
+	WRITE_DEBUG_MSG(woaddr.str());
 
-	if (DetourAttach(&(PVOID&)realNdrStubCall2, detouredNdrStubCall2) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrStubCall2"));
-	}
-	if (DetourAttach(&(PVOID&)realNdrServerCallAll, detouredNdrServerCallAll) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallAll"));
-	}
-	if (DetourAttach(&(PVOID&)realNdrAsyncServerCall, detouredNdrAsyncServerCall) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallAll"));
-	}
-	if (DetourAttach(&(PVOID&)realNdr64AsyncServerCallAll, detouredNdr64AsyncServerCallAll) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on Ndr64AsyncServerCallAll"));
-	}
-	if (DetourAttach(&(PVOID&)realNdr64AsyncServerCall64, detouredNdr64AsyncServerCall64) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on Ndr64AsyncServerCall64"));
-	}
-	if (DetourAttach(&(PVOID&)realNdrServerCallNdr64, detouredNdrServerCallNdr64) != NO_ERROR)
-	{
-		WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallNdr64"));
-	}
+	if (!offsetNdrpServerOutInit||!(realNdrpServerOutInit && realNdr64pServerOutInit && is64Bit)) {
+		WRITE_DEBUG_MSG(TEXT("Could not determine address for NdrpServerOutInit or NDR64pServerOutInit. Defaulting to standard RPCFirewall."));
 
-	LONG errCode = DetourTransactionCommit();
-	if (errCode != NO_ERROR)
-	{
-		wchar_t errMsg[MAX_PATH];
-		_stprintf_s(errMsg, TEXT("RpcFirewall installation error, DetourTransactionCommit() failed :%d"), errCode);
-		WRITE_DEBUG_MSG(errMsg);
-		processProtectedEvent(false, myProcessName, myProcessID);
-		return;
+		WRITE_DEBUG_MSG(TEXT("RPCFirewall confirmed relevant RPC server."));
+
+		DisableThreadLibraryCalls(myhModule);
+		DetourTransactionBegin();
+		DetourUpdateThread(GetCurrentThread());
+
+		detouredFunctions = true;
+
+		if (DetourAttach(&(PVOID&)realNdrStubCall2, detouredNdrStubCall2) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrStubCall2"));
+		}
+		if (DetourAttach(&(PVOID&)realNdrServerCallAll, detouredNdrServerCallAll) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallAll"));
+		}
+		if (DetourAttach(&(PVOID&)realNdrAsyncServerCall, detouredNdrAsyncServerCall) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallAll"));
+		}
+		if (DetourAttach(&(PVOID&)realNdr64AsyncServerCallAll, detouredNdr64AsyncServerCallAll) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on Ndr64AsyncServerCallAll"));
+		}
+		if (DetourAttach(&(PVOID&)realNdr64AsyncServerCall64, detouredNdr64AsyncServerCall64) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on Ndr64AsyncServerCall64"));
+		}
+		if (DetourAttach(&(PVOID&)realNdrServerCallNdr64, detouredNdrServerCallNdr64) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrServerCallNdr64"));
+		}
+
+		LONG errCode = DetourTransactionCommit();
+		if (errCode != NO_ERROR)
+		{
+			wchar_t errMsg[MAX_PATH];
+			_stprintf_s(errMsg, TEXT("RpcFirewall installation error, DetourTransactionCommit() failed :%d"), errCode);
+			WRITE_DEBUG_MSG(errMsg);
+			processProtectedEvent(false, myProcessName, myProcessID);
+			return;
+		}
+
+		WRITE_DEBUG_MSG(TEXT("RpcFirewall installed!"));
+		processProtectedEvent(true, myProcessName, myProcessID);
+
+		waitForFurtherInstructions();
+
 	}
+	else {
+		DisableThreadLibraryCalls(myhModule);
+		DetourTransactionBegin();
+		DetourUpdateThread(GetCurrentThread());
 
-	WRITE_DEBUG_MSG(TEXT("RpcFirewall installed!"));
-	processProtectedEvent(true, myProcessName, myProcessID);
+		detouredFunctions = true;
 
-	waitForFurtherInstructions();
+		if (DetourAttach(&(PVOID&)realNdrpServerOutInit, detouredNdrpServerOutInit) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on NdrpServerOutInit"));
+		}
+		if (DetourAttach(&(PVOID&)realNdr64pServerOutInit, detouredNdr64pServerOutInit) != NO_ERROR)
+		{
+			WRITE_DEBUG_MSG(TEXT("DetourAttach error on Ndr64pServerOutInit"));
+		}
+
+		LONG errCode = DetourTransactionCommit();
+		if (errCode != NO_ERROR)
+		{
+			wchar_t errMsg[MAX_PATH];
+			_stprintf_s(errMsg, TEXT("RpcFirewall installation error, DetourTransactionCommit() failed :%d"), errCode);
+			WRITE_DEBUG_MSG(errMsg);
+			processProtectedEvent(false, myProcessName, myProcessID);
+			return;
+		}
+
+		WRITE_DEBUG_MSG(TEXT("RpcFirewall installed!"));
+		processProtectedEvent(true, myProcessName, myProcessID);
+
+		waitForFurtherInstructions();
+
+	}
 }
 
 void dllDetached()
@@ -1179,6 +1249,8 @@ void dllDetached()
 	{
 		DetourTransactionBegin();
 		DetourUpdateThread(GetCurrentThread());
+		DetourDetach(&(PVOID&)realNdrpServerOutInit, detouredNdrStubCall2);
+		DetourDetach(&(PVOID&)realNdr64pServerOutInit, detouredNdrStubCall2);
 		DetourDetach(&(PVOID&)realNdrStubCall2, detouredNdrStubCall2);
 		DetourDetach(&(PVOID&)realNdrServerCallAll, detouredNdrServerCallAll);
 		DetourDetach(&(PVOID&)realNdrAsyncServerCall, detouredNdrAsyncServerCall);
@@ -1280,35 +1352,41 @@ std::wstring GetClientSIDString()
 	return clientSID;
 }
 
-RpcEventParameters populateEventParameters(PRPC_MESSAGE pRpcMsg, wchar_t* szStringBindingServer, wchar_t* szStringBinding, wchar_t* functionName, std::wstring &srcAddr, unsigned short srcPort, std::wstring& dstAddr, unsigned short dstPort)
+RpcEventParameters populateEventParameters(PRPC_MESSAGE pRpcMsg, wchar_t* szStringBindingServer, wchar_t* szStringBinding, wchar_t* functionName, std::wstring &srcAddr, unsigned short srcPort, std::wstring& dstAddr, unsigned short dstPort, IdlFunction* idlFunction)
 {
 	RpcEventParameters eventParams = {};
 	eventParams.functionName = std::wstring(functionName);
 	eventParams.processID = std::wstring(myProcessID);
 	eventParams.processName = std::wstring(myProcessName);
 	eventParams.clientSID = GetClientSIDString();
+	WRITE_DEBUG_MSG(eventParams.clientSID);
 	
 	std::wstring srcPrt = std::to_wstring(srcPort);
 	eventParams.srcPort  = srcPrt;
 	std::wstring dstPrt = std::to_wstring(dstPort);
 	eventParams.dstPort = dstPrt;
 
-	std::wstring szWstringBindingServer = std::wstring(szStringBindingServer);
-	std::wstring szWstringBinding = std::wstring(szStringBinding);
+	std::wstring szWstringBindingServer;
+	std::wstring szWstringBinding;
+	if(szStringBindingServer && szStringBinding){
+		szWstringBindingServer = std::wstring(szStringBindingServer);
+		szWstringBinding = std::wstring(szStringBinding);
 
-	size_t pos = szWstringBinding.find(_T(":"), 0);
-	
-	eventParams.protocol = szWstringBinding.substr(0, pos);
-	srcAddr.empty() ? eventParams.sourceAddress = szWstringBinding.substr(pos + 1, szWstringBinding.length() - pos) : eventParams.sourceAddress = srcAddr;
-	dstAddr.empty() ? eventParams.destAddress = _T("0.0.0.0") : eventParams.destAddress = dstAddr;
 
-	if (pos != std::string::npos) {
-		szWstringBinding.replace(pos, 1, L",");
+		size_t pos = szWstringBinding.find(_T(":"), 0);
+
+		eventParams.protocol = szWstringBinding.substr(0, pos);
+		srcAddr.empty() ? eventParams.sourceAddress = szWstringBinding.substr(pos + 1, szWstringBinding.length() - pos) : eventParams.sourceAddress = srcAddr;
+		dstAddr.empty() ? eventParams.destAddress = _T("0.0.0.0") : eventParams.destAddress = dstAddr;
+
+		if (pos != std::string::npos) {
+			szWstringBinding.replace(pos, 1, L",");
+		}
+
+		pos = szWstringBindingServer.find(_T("["));
+		size_t endpos = szWstringBindingServer.find(_T("]"), pos + 1);
+		eventParams.endpoint = szWstringBindingServer.substr(pos + 1, endpos - pos - 1);
 	}
-
-	pos = szWstringBindingServer.find(_T("["));
-	size_t endpos = szWstringBindingServer.find(_T("]"), pos + 1);
-	eventParams.endpoint = szWstringBindingServer.substr(pos + 1, endpos - pos - 1);
 
 	byte* byteUuidPointer = (byte*)pRpcMsg->RpcInterfaceInformation;
 
@@ -1338,6 +1416,9 @@ RpcEventParameters populateEventParameters(PRPC_MESSAGE pRpcMsg, wchar_t* szStri
 			eventParams.authnLevel = convertAuthLevelToString(AuthnLevel);
 			eventParams.authnSvc = convertAuthSvcToString(AuthnSvc);
 		}
+	}
+	if (idlFunction) {
+		eventParams.extendedTelemetry = idlFunction->getExtendedTelemetry();
 	}
 
 	if (szStringUuid != nullptr) RpcStringFree(&szStringUuid);
@@ -1396,7 +1477,7 @@ unsigned short getAddressAndPortFromBuffer(std::wstring& srcAddr, byte* buff)
 	return port;
 }
 
-bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg)
+bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_STUB_MESSAGE* midlStubMessage)
 {
 	RpcCallPolicy policy{};
 
@@ -1470,7 +1551,54 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg)
 			dstPort = getAddressAndPortFromBuffer(dstAddrFromConnection, buffDst);
 		}
 
-		const RpcEventParameters eventParams = populateEventParameters(pRpcMsg, szStringBindingServer.str, szStringBinding.str, functionName, srcAddrFromConnection, srcPort, dstAddrFromConnection, dstPort);
+		// Process args
+		WRITE_DEBUG_MSG(TEXT("Processing Arguments"));
+		IdlFunction* idlFunction = NULL;
+		if (midlStubMessage) {
+			RPC_SERVER_INTERFACE* serverInterface;
+			MIDL_SERVER_INFO* serverInfo;
+			serverInterface = (RPC_SERVER_INTERFACE*)midlStubMessage->StubDesc->RpcInterfaceInformation;
+
+			byte* byteUuidPointer = (byte*)pRpcMsg->RpcInterfaceInformation;
+			_RPC_IF_ID* rpcifid = (_RPC_IF_ID*)(byteUuidPointer + 4);
+			RPC_WSTR szStringUuid = nullptr;
+			RPC_STATUS status = UuidToString(&(rpcifid->Uuid), &szStringUuid);
+			std::wstring ifUuid(L"");
+			if (!status) {
+				ifUuid = std::wstring((wchar_t*)szStringUuid);
+				if (szStringUuid != nullptr) RpcStringFree(&szStringUuid);
+			}
+
+			//Non-object RPC
+			if (serverInterface) {
+				WRITE_DEBUG_MSG(TEXT("non-object RPC"));
+
+				serverInfo = (MIDL_SERVER_INFO*)serverInterface->InterpreterInfo;
+
+				idlFunction = new IdlFunction((MIDL_SERVER_INFO*)serverInterface->InterpreterInfo, midlStubMessage->StubDesc->pFormatTypes, midlStubMessage->RpcMsg->ProcNum, ifUuid, midlStubMessage->StackTop);
+
+				std::wostringstream woss;
+				woss << "ProcNum: " << midlStubMessage->RpcMsg->ProcNum<< std::endl;
+				WRITE_DEBUG_MSG(woss.str());
+				woss.clear();
+			}
+			else {
+				WRITE_DEBUG_MSG(TEXT("object RPC"));
+
+				std::wostringstream woss;
+				unsigned short *numArgs = (unsigned short*)((uintptr_t)midlStubMessage->pContext+32);
+				woss << "ProcNum: " << midlStubMessage->RpcMsg->ProcNum<< std::endl;
+				WRITE_DEBUG_MSG(woss.str());
+				woss.clear();
+				uintptr_t* procString = (uintptr_t*)midlStubMessage->pContext+5;
+
+				idlFunction = new IdlFunction((void*)*procString, midlStubMessage->StubDesc->pFormatTypes, pRpcMsg->ProcNum, ifUuid, midlStubMessage->StackTop, *numArgs);
+			}
+
+
+		}
+
+		const RpcEventParameters eventParams = populateEventParameters(pRpcMsg, szStringBindingServer.str, szStringBinding.str, functionName, srcAddrFromConnection, srcPort, dstAddrFromConnection, dstPort, idlFunction);
 		
 		policy = getMatchingPolicy(eventParams);
 
@@ -1483,6 +1611,7 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg)
 		{
 			rpcFunctionCalledEvent(policy.allow, eventParams);
 		}
+		delete idlFunction;
 	}
 	catch (const std::runtime_error& re) {
 		WRITE_DEBUG_MSG_WITH_ERROR_MSG(TEXT("Exception: Runtime error during call"), (wchar_t*)re.what());
@@ -1497,14 +1626,29 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg)
 	return policy.allow;
 }
 
-void processRPCCall(wchar_t* functionName, PRPC_MESSAGE pRpcMsg)
+
+void processRPCCall(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_STUB_MESSAGE* midlStubMessage = NULL)
 {
-	const bool allowCall = processRPCCallInternal(functionName, pRpcMsg);
+	const bool allowCall = processRPCCallInternal(functionName, pRpcMsg, midlStubMessage);
 	
 	if (!allowCall)
 	{
 		RpcRaiseException(ERROR_ACCESS_DENIED);
 	}
+}
+
+void __fastcall detouredNdrpServerOutInit(_MIDL_STUB_MESSAGE *midlStubMessage)
+{
+	processRPCCall((wchar_t*)_T("NdrpServerOutInit"), midlStubMessage->RpcMsg, midlStubMessage);
+
+	return realNdrpServerOutInit(midlStubMessage);
+}
+
+void __fastcall detouredNdr64pServerOutInit(_MIDL_STUB_MESSAGE *midlStubMessage)
+{
+	processRPCCall((wchar_t*)_T("Ndr64pServerOutInit"), midlStubMessage->RpcMsg, midlStubMessage);
+
+	return realNdr64pServerOutInit(midlStubMessage);
 }
 
 long WINAPI detouredNdrStubCall2(void* pThis, void* pChannel, PRPC_MESSAGE pRpcMsg, unsigned long* pdwStubPhase)

@@ -27,12 +27,51 @@
     <ClInclude Include="rpcWrappers.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\ConsoleApplication1\ConsoleApplication1\internalRpcDecompTypeDefs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\ConsoleApplication1\ConsoleApplication1\RpcCommon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\ConsoleApplication1\ConsoleApplication1\RpcDecompiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\ConsoleApplication1\ConsoleApplication1\RpcView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pdbparse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pdbparsestructs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IdlFunction.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IdlType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="wellKnownInterfaces.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pdbparse.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="IdlFunction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="IdlType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="wellKnownInterfaces.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

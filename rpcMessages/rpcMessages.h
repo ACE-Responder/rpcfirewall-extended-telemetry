@@ -33,6 +33,8 @@ struct RpcEventParameters
 	std::wstring authnLevel;
 	std::wstring authnSvc;
 	std::wstring clientSID;
+	std::wstring extendedTelemetry;
+	std::wstring extendedTelemetryJson;
 };
 
 DllExport bool deleteEventSource();
