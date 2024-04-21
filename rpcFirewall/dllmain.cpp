@@ -18,7 +18,18 @@
 #include "rpcWrappers.hpp"
 #include <sddl.h>
 
+#include "internalRpcDecompTypeDefs.h"
+#include "IdlFunction.h"
+#include "pdbparse.h"
+
 #pragma comment(lib, "Ws2_32.lib")
+
+#ifdef _WIN64
+BOOL is64Bit = TRUE;
+#else
+BOOL is64Bit = FALSE;
+#endif
+
 
 HMODULE myhModule;
 
