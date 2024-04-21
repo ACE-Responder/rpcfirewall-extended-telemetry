@@ -18,18 +18,7 @@
 #include "rpcWrappers.hpp"
 #include <sddl.h>
 
-#include "internalRpcDecompTypeDefs.h"
-#include "IdlFunction.h"
-#include "pdbparse.h"
-
 #pragma comment(lib, "Ws2_32.lib")
-
-#ifdef _WIN64
-BOOL is64Bit = TRUE;
-#else
-BOOL is64Bit = FALSE;
-#endif
-
 
 HMODULE myhModule;
 
@@ -1366,12 +1355,9 @@ RpcEventParameters populateEventParameters(PRPC_MESSAGE pRpcMsg, wchar_t* szStri
 	std::wstring dstPrt = std::to_wstring(dstPort);
 	eventParams.dstPort = dstPrt;
 
-	std::wstring szWstringBindingServer;
-	std::wstring szWstringBinding;
 	if(szStringBindingServer && szStringBinding){
-		szWstringBindingServer = std::wstring(szStringBindingServer);
-		szWstringBinding = std::wstring(szStringBinding);
-
+		std::wstring szWstringBindingServer = std::wstring(szStringBindingServer);
+		std::wstring szWstringBinding = std::wstring(szStringBinding);
 
 		size_t pos = szWstringBinding.find(_T(":"), 0);
 
