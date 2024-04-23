@@ -1249,14 +1249,19 @@ void dllDetached()
 	{
 		DetourTransactionBegin();
 		DetourUpdateThread(GetCurrentThread());
-		DetourDetach(&(PVOID&)realNdrpServerOutInit, detouredNdrStubCall2);
-		DetourDetach(&(PVOID&)realNdr64pServerOutInit, detouredNdrStubCall2);
-		DetourDetach(&(PVOID&)realNdrStubCall2, detouredNdrStubCall2);
-		DetourDetach(&(PVOID&)realNdrServerCallAll, detouredNdrServerCallAll);
-		DetourDetach(&(PVOID&)realNdrAsyncServerCall, detouredNdrAsyncServerCall);
-		DetourDetach(&(PVOID&)realNdr64AsyncServerCallAll, detouredNdr64AsyncServerCallAll);
-		DetourDetach(&(PVOID&)realNdr64AsyncServerCall64, detouredNdr64AsyncServerCall64);
-		DetourDetach(&(PVOID&)realNdrServerCallNdr64, detouredNdrServerCallNdr64);
+
+		if (&(PVOID&)realNdrpServerOutInit) {
+			DetourDetach(&(PVOID&)realNdrpServerOutInit, detouredNdrpServerOutInit);
+			DetourDetach(&(PVOID&)realNdr64pServerOutInit, detouredNdr64pServerOutInit);
+		}
+		else {
+			DetourDetach(&(PVOID&)realNdrStubCall2, detouredNdrStubCall2);
+			DetourDetach(&(PVOID&)realNdrServerCallAll, detouredNdrServerCallAll);
+			DetourDetach(&(PVOID&)realNdrAsyncServerCall, detouredNdrAsyncServerCall);
+			DetourDetach(&(PVOID&)realNdr64AsyncServerCallAll, detouredNdr64AsyncServerCallAll);
+			DetourDetach(&(PVOID&)realNdr64AsyncServerCall64, detouredNdr64AsyncServerCall64);
+			DetourDetach(&(PVOID&)realNdrServerCallNdr64, detouredNdrServerCallNdr64);
+		}
 
 		if (DetourTransactionCommit() == NO_ERROR)
 		{
@@ -1501,8 +1506,11 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_S
 		{
 			return true;
 		}
+		
+
 
 		RpcStringWrapper szStringBindingServer;
+		//status = RpcBindingToStringBinding(pRpcMsg->Handle, szStringBindingServer.getRpcPtr());
 		status = RpcBindingToStringBinding(pRpcMsg->Handle, szStringBindingServer.getRpcPtr());
 		if (status != RPC_S_OK)
 		{
@@ -1566,9 +1574,8 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_S
 				if (szStringUuid != nullptr) RpcStringFree(&szStringUuid);
 			}
 
-			//Non-object RPC
 			if (serverInterface) {
-				WRITE_DEBUG_MSG(TEXT("non-object RPC"));
+				//Non-object RPC
 
 				serverInfo = (MIDL_SERVER_INFO*)serverInterface->InterpreterInfo;
 
@@ -1580,8 +1587,7 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_S
 				woss.clear();
 			}
 			else {
-				WRITE_DEBUG_MSG(TEXT("object RPC"));
-
+				//object call
 				std::wostringstream woss;
 				unsigned short *numArgs = (unsigned short*)((uintptr_t)midlStubMessage->pContext+32);
 				woss << "ProcNum: " << midlStubMessage->RpcMsg->ProcNum<< std::endl;
@@ -1594,6 +1600,22 @@ bool processRPCCallInternal(wchar_t* functionName, PRPC_MESSAGE pRpcMsg, _MIDL_S
 
 
 		}
+
+		//Only really necessary if you process lrpc
+		RPC_CALL_ATTRIBUTES_V2 CallAttributes;
+		memset(&CallAttributes, 0, sizeof(CallAttributes));
+		CallAttributes.Version = 2;
+		CallAttributes.Flags = RPC_QUERY_CLIENT_PID;
+		status = RpcServerInqCallAttributes(0, &CallAttributes);
+
+		if (!status) {
+			idlFunction->setCallerPid((int)CallAttributes.ClientPID);
+			std::wostringstream woss;
+			woss << "Calling Process Pid: " << CallAttributes.ClientPID << std::endl;
+			OutputDebugString(woss.str().c_str());
+			woss.clear();
+		}
+
 
 		const RpcEventParameters eventParams = populateEventParameters(pRpcMsg, szStringBindingServer.str, szStringBinding.str, functionName, srcAddrFromConnection, srcPort, dstAddrFromConnection, dstPort, idlFunction);
 		

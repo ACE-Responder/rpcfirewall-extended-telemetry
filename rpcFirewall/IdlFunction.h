@@ -21,6 +21,7 @@ private:
 	UINT					m_procNum;
 	unsigned char*			m_stackTop;
 	std::wstring			m_extendedTelemetryJson=L"";
+	UINT					m_callerPID=0;
 
 	BOOL					decodeProcHeader();
 	BOOL					decodeArguments();
@@ -41,8 +42,8 @@ public:
 	unsigned char*			getStackTop();
 	UINT					getProcNum();
 	std::wstring			getExtendedTelemetry();
-	std::wstring			getExtendedTelemetryJson();
-
+	void					setCallerPid(int callerPid);
+	int						getCallerPid();
 };
 
 std::string wtos(const std::wstring& ws);

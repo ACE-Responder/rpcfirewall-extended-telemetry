@@ -1,3 +1,17 @@
+# Extended Telemetry Experimental Fork
+This is an experimental fork of RPC Firewall that hooks NdrpServerOutInit and extracts the unmarshalled data in `_MIDL_STUB_MESSAGE->StackTop`. It adds an additional field to the RPCFW event type 3 that:
+
+* Resolves well known interfaces and OpNums to their common name
+* Interprets various argument types based on the compiled interface definition
+
+It is recommended to use this fork for single processes. In other words, don't use:
+
+```bash
+RpcFwManager.exe /start
+```
+
+---
+
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/zeronetworks/rpcfirewall)](https://github.com/zeronetworks/rpcfirewall/releases/latest)
 ![GitHub all releases](https://img.shields.io/github/downloads/zeronetworks/rpcfirewall/total)
 

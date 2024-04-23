@@ -212,10 +212,26 @@ std::wstring IdlFunction::getArgOutStr(int argIndex)
 	return arg.getOutStr();
 }
 
+	void					setCallerPid(int callerPid);
+	int						getCallerPid();
+void IdlFunction::setCallerPid(int callerPid)
+{
+	m_callerPID = callerPid;
+}
+
+int IdlFunction::getCallerPid()
+{
+	return m_callerPID;
+}
+
 std::wstring IdlFunction::getExtendedTelemetry()
 {
     std::wostringstream woss;
 	json j;
+
+	if (m_callerPID) {
+		j["ClientPID"] = m_callerPID;
+	}
 
     if (!m_ifName.empty()) {
 		j["KnownInterface"] = wtos(m_ifName);
@@ -227,6 +243,7 @@ std::wstring IdlFunction::getExtendedTelemetry()
             }
         }
     }
+
     for (std::list<IdlType>::iterator arg = m_listArg.begin(); arg != m_listArg.end(); arg++) {
         if (!arg->getOutStr().empty()) {
 
