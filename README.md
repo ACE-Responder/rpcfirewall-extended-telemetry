@@ -2,6 +2,8 @@
 
 ![](https://assets.aceresponder.com/meta/rpc-telemetry.png)
 
+An in-depth explanation for this tool and the telemetry it provides can be found [here](https://www.aceresponder.com/blog/disrupting-offensive-rpc).
+
 This is an experimental fork of RPC Firewall that hooks NdrpServerOutInit and extracts the unmarshalled data in `_MIDL_STUB_MESSAGE->StackTop`. It adds an additional field to the RPCFW event type 3 that:
 
 * Resolves well known interfaces and OpNums to their common name
