@@ -1,4 +1,9 @@
 # Extended Telemetry Experimental Fork
+
+![](https://assets.aceresponder.com/meta/rpc-telemetry.png)
+
+An in-depth explanation for this tool and the telemetry it provides can be found [here](https://www.aceresponder.com/blog/disrupting-offensive-rpc).
+
 This is an experimental fork of RPC Firewall that hooks NdrpServerOutInit and extracts the unmarshalled data in `_MIDL_STUB_MESSAGE->StackTop`. It adds an additional field to the RPCFW event type 3 that:
 
 * Resolves well known interfaces and OpNums to their common name
@@ -9,6 +14,8 @@ It is recommended to use this fork for single processes. In other words, don't u
 ```bash
 RpcFwManager.exe /start
 ```
+
+If it fails to hook NdrpServerOutInit, it will fallback to the default RPC Firewall operation.
 
 ---
 
