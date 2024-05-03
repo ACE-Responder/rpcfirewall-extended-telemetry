@@ -4,6 +4,10 @@
 #include <string>
 #include <sstream>
 #include <WbemCli.h>
+#include <Wincrypt.h>
+#include <Windows.h>
+#include <certreqd.h>
+#pragma comment ( lib, "Crypt32.lib" )
 
 #include "IdlType.h"		
 using json = nlohmann::json;
@@ -14,7 +18,11 @@ using json = nlohmann::json;
 	BOOL is64b = FALSE;
 #endif
 
-
+inline void ltrim(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return std::isalpha(ch);
+    }));
+}
 
 void IdlType::processSimpleType(FC_TYPE fcType) 
 {
@@ -207,7 +215,118 @@ void IdlType::processComplexType(
 
 	//case FC_CPSTRUCT:
 	//case FC_CVSTRUCT:
-	//case FC_BOGUS_STRUCT:
+	case FC_BOGUS_STRUCT:
+	{
+		OutputDebugString(TEXT("FC_BOGUS_STRUCT"));
+		if (m_pFunction->getIfName() == L"ICertPassage" && m_pFunction->getProcNum() == 0) {
+			CERTTRANSBLOB** pcertblob = reinterpret_cast<CERTTRANSBLOB**>(m_pFunction->getStackTop() + m_paramDescription.oif_Format.stack_offset);
+			CERTTRANSBLOB* certblob = *pcertblob;
+			if (m_argNbr == 5) {
+				m_outStr = (wchar_t*)certblob->pb;
+			}
+			else if (m_argNbr == 6) {
+				isJson = TRUE;
+				json j;
+
+
+				PCERT_REQUEST_INFO certInfo = NULL;
+				DWORD size = 0;
+
+				if (CryptDecodeObjectEx(
+					X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+					X509_CERT_REQUEST_TO_BE_SIGNED,
+					certblob->pb,
+					certblob->cb,
+					CRYPT_DECODE_ALLOC_FLAG,
+					nullptr,
+					&certInfo,
+					&size))
+				{
+					if (certInfo->Subject.cbData) {
+						char* pbSubject = NULL;
+						DWORD len = CertNameToStrA(X509_ASN_ENCODING, &certInfo->Subject, CERT_X500_NAME_STR, NULL, 0);
+						if (len) {
+							pbSubject = (char*)HeapAlloc(GetProcessHeap(), 0, len * sizeof(char));
+							if (pbSubject) {
+								if (CertNameToStrA(X509_ASN_ENCODING, &certInfo->Subject, CERT_X500_NAME_STR, pbSubject, len)) {
+									j["Subject"] = pbSubject;
+								}
+							}
+							if (pbSubject) {
+								HeapFree(GetProcessHeap(), 0, pbSubject);
+							}
+						}
+					}
+					if (certInfo->cAttribute) {
+						std::vector<std::string> sanList;
+
+						for (DWORD i = 0; i < certInfo->cAttribute; ++i)
+						{
+							CRYPT_ATTRIBUTE attr = certInfo->rgAttribute[i];
+							if (!attr.cValue) {
+								continue;
+							}
+							PCERT_EXTENSIONS rgExtensions = NULL;
+							if (CryptDecodeObjectEx(
+								X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+								X509_EXTENSIONS,
+								attr.rgValue->pbData,
+								attr.rgValue->cbData,
+								CRYPT_DECODE_ALLOC_FLAG,
+								nullptr,
+								&rgExtensions,
+								&size)) {
+								if (rgExtensions->rgExtension->pszObjId &&
+									(!strcmp(rgExtensions->rgExtension->pszObjId, szOID_SUBJECT_ALT_NAME2) ||
+										!strcmp(rgExtensions->rgExtension->pszObjId, szOID_SUBJECT_ALT_NAME))
+									) {
+									PCERT_ALT_NAME_INFO pAlt = NULL;
+									if (CryptDecodeObjectEx(
+										X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+										X509_ALTERNATE_NAME,
+										rgExtensions->rgExtension->Value.pbData,
+										rgExtensions->rgExtension->Value.cbData,
+										CRYPT_DECODE_ALLOC_FLAG,
+										nullptr,
+										&pAlt,
+										&size
+									)) {
+										if (pAlt->cAltEntry) {
+											for (DWORD i = 0; i < pAlt->cAltEntry; i++) {
+												if (pAlt->rgAltEntry[i].dwAltNameChoice == CERT_ALT_NAME_OTHER_NAME && !strcmp(pAlt->rgAltEntry[i].pOtherName->pszObjId, szOID_NT_PRINCIPAL_NAME)) {
+													std::string san((char*)pAlt->rgAltEntry[i].pOtherName[0].Value.pbData);
+													ltrim(san);
+													sanList.push_back(san);
+												}
+											}
+										}
+									}
+									if (pAlt) {
+										LocalFree(pAlt);
+									}
+								}
+							}
+							if (rgExtensions) {
+								LocalFree(rgExtensions);
+							}
+						}
+						if (!sanList.empty()) {
+							j["SubjectAltNames"] = sanList;
+						}
+					}
+
+				}
+				if (certInfo) {
+					LocalFree(certInfo);
+				}
+
+				std::wostringstream woss;
+				woss << j.dump().c_str();
+				m_outStr = woss.str();
+			}
+		}
+		break;
+	}
 	//case FC_HARD_STRUCT:
 	case FC_RP:
 	case FC_UP:
@@ -314,6 +433,30 @@ void IdlType::processComplexType(
 			SafeArrayDestroy(pNames);
 		}
 
+		break;
+	}
+	case FC_BLKHOLE:
+	{
+		short wOffsetRange = 0;
+		BYTE bRead = 0;
+		UINT64 pNewType = NULL;
+		DWORD dwRangeBegin = 0;
+		DWORD dwRangeEnd = 0;
+
+		UINT64 pType = (pTypeFormatString + formatStringOffset) + sizeof(BYTE) + sizeof(BYTE);
+		memcpy(&wOffsetRange, (void*)pType, sizeof(wOffsetRange));
+
+		pNewType = pType + wOffsetRange;
+		pType += sizeof(wOffsetRange);
+		memcpy(&bRead, (void*)pNewType, sizeof(bRead));
+
+		//if ((FC_TYPE)bRead != FC_BIND_CONTEXT)
+		//{
+		//	memcpy(&dwRangeBegin, (void*)pType, sizeof(dwRangeBegin));
+		//	pType += sizeof(dwRangeBegin);
+		//	memcpy(&dwRangeEnd, (void*)pType, sizeof(dwRangeEnd));
+		//}
+		processComplexType(pNewType,0);
 		break;
 	}
 	default:

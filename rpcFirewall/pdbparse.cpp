@@ -10,9 +10,10 @@
 #include <iomanip>
 #include <urlmon.h>
 #include <algorithm>
+#include <DbgHelp.h>
 #pragma comment(lib,"diaguids.lib")
 #pragma comment(lib,"urlmon.lib")
-
+#pragma comment(lib,"dbghelp.lib")
 
 
 
@@ -156,146 +157,38 @@ std::string get_pdb_path(const module_t &module_info, bool is_wow64)
 	return pdb_path;
 }
 
-uintptr_t pdb_parse::get_address_from_symbol(std::string_view function_name, const module_t &module_info, bool is_wow64)
+uintptr_t pdb_parse::get_address_from_symbol(std::string_view function_name)
 {
+	HANDLE hProc;
+	HANDLE hCurrentProc;
+	TCHAR szSymbolName[MAX_SYM_NAME];
+	ULONG64 buffer[(sizeof(SYMBOL_INFO) +
+		MAX_SYM_NAME * sizeof(TCHAR) +
+		sizeof(ULONG64) - 1) /
+		sizeof(ULONG64)];
+	PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
 
-	if (!module_info) {
-		OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - module_info is NULL"));
-		return 0;
+	pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+	pSymbol->MaxNameLen = MAX_SYM_NAME;
+
+	SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+	hCurrentProc = GetCurrentProcess();
+	DuplicateHandle(hCurrentProc, hCurrentProc, hCurrentProc, &hProc, 0, FALSE, DUPLICATE_SAME_ACCESS);
+	SymInitialize(hProc, NULL, TRUE);
+
+
+	if (SymFromName(hProc, function_name.data(), pSymbol)) {
+
+		std::wostringstream woss;
+		woss <<std::hex<< pSymbol->Address;
+		OutputDebugString(woss.str().c_str());
+		woss.clear();
+		return pSymbol->Address;
 	}
 
-	{
-		static auto has_initialized = false;
-
-		if (!has_initialized)
-		{
-			CoInitialize(nullptr);
-			has_initialized = true;
-		}
-	}
-
-
-	//auto &function_address = cached_info[module_info.path].first[function_name.data()];
-	uintptr_t function_address;
-
-	//if (function_address)
-	//	return function_address + module_info.module_base;
-
-	const auto pdb_path = get_pdb_path(module_info, is_wow64);
-
-
-	if (pdb_path.empty()) {
-		OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - PDB Path Empty"));
-		return 0;
-	}
-
-
-	//const auto symbol_info_path = pdb_path.substr(0, pdb_path.find_last_of("\\") + 1) + "info.txt";
-
-	//{
-	//	std::ifstream file(symbol_info_path);
-	//	if (file.is_open())
-	//	{
-	//		std::string current_line_buffer;
-
-	//		while (std::getline(file, current_line_buffer))
-	//		{
-	//			std::stringstream current_line(current_line_buffer);
-
-	//			current_line >> current_line_buffer;
-
-	//			if (current_line_buffer == function_name)
-	//			{
-	//				uintptr_t address = 0;
-	//				current_line >> std::hex >> address;
-
-	//				function_address = address;
-	//				return address + module_info.module_base;
-	//			}
-	//		}
-
-	//		file.close();
-	//	}
-	//}
-
-	CComPtr<IDiaDataSource> source;
-
-	HRESULT res = CoCreateInstance(CLSID_DiaSource, NULL, CLSCTX_INPROC_SERVER, __uuidof(IDiaDataSource), (void**)&source);
-
-	if (FAILED(CoCreateInstance(CLSID_DiaSource, NULL, CLSCTX_INPROC_SERVER, __uuidof(IDiaDataSource), (void**)&source))){
-		OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - CoCreateInstanceFailed"));
-		return 0;
-	}
-
-
-	{
-		wchar_t wide_path[MAX_PATH];
-		memset(wide_path, 0, MAX_PATH * 2);
-
-		MultiByteToWideChar(CP_ACP, 0, pdb_path.c_str(), (int)pdb_path.length(), wide_path, MAX_PATH);
-		if (FAILED(source->loadDataFromPdb(wide_path))) {
-			OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - Failed to load PDB data"));
-			return 0;
-		}
-	}
-
-	CComPtr<IDiaSession> session;
-	if (FAILED(source->openSession(&session))) {
-		OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - IDiaSession open failed"));
-		return 0;
-	}
-
-	CComPtr<IDiaSymbol> global;
-	if (FAILED(session->get_globalScope(&global))) {
-		OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - IDiaSymbol get globalScope failed"));
-		return 0;
-	}
-
-	CComPtr<IDiaEnumSymbols> enum_symbols;
-	CComPtr<IDiaSymbol> current_symbol;
-	ULONG celt = 0;
-
-	{
-		constexpr auto max_name_length = 1024;
-
-		wchar_t wide_function_name[max_name_length];
-		memset(wide_function_name, 0, max_name_length * 2);
-
-		MultiByteToWideChar(CP_ACP, 0, function_name.data(), (int)function_name.length(), wide_function_name, max_name_length);
-
-		if (FAILED(global->findChildren(SymTagNull, wide_function_name, nsNone, &enum_symbols))) {
-			OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - IDiaSymbol failed to find symbol children"));
-			return 0;
-		}
-	}
-
-	while (SUCCEEDED(enum_symbols->Next(1, &current_symbol, &celt)) && celt == 1)
-	{
-		DWORD relative_function_address;
-
-		if (FAILED(current_symbol->get_relativeVirtualAddress(&relative_function_address)))
-			continue;
-
-		if (!relative_function_address)
-			continue;
-
-		function_address = relative_function_address;
-
-		//std::ofstream file(symbol_info_path, std::ios_base::app);
-		//if (file.is_open())
-		//{
-		//	file << function_name << ' ' << std::hex << relative_function_address << std::endl;
-		//	file.close();
-		//}
-
-		return relative_function_address + module_info.module_base;
-	}
-	OutputDebugString(TEXT("Error: pdb_parse::get_address_from_symbol - IDiaSymbol failed to get symbol RVA"));
+	DWORD error = GetLastError();
 
 	return 0;
+
 }
 
-//void pdb_parse::clear_info()
-//{
-//	cached_info.clear();
-//}

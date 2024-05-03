@@ -1143,12 +1143,11 @@ void mainStart()
 	}
 
 	HANDLE hRpcrt4 = GetModuleHandle(L"rpcrt4");
-    const auto rpcrt4Info = pdb_parse::get_module_info("C:\\Windows\\System32\\rpcrt4.dll", FALSE);
-    const auto offsetNdrpServerOutInit = pdb_parse::get_address_from_symbol("NdrpServerOutInit", rpcrt4Info, FALSE);
-    const auto offsetNdr64pServerOutInit= pdb_parse::get_address_from_symbol("Ndr64pServerOutInit", rpcrt4Info, FALSE);
+    const auto offsetNdrpServerOutInit = pdb_parse::get_address_from_symbol("NdrpServerOutInit");
+    const auto offsetNdr64pServerOutInit= pdb_parse::get_address_from_symbol("Ndr64pServerOutInit");
 
-    realNdrpServerOutInit = (NdrpServerOutInit)((uintptr_t)hRpcrt4 + offsetNdrpServerOutInit);
-    realNdr64pServerOutInit = (Ndr64pServerOutInit)((uintptr_t)hRpcrt4 + offsetNdr64pServerOutInit);
+    realNdrpServerOutInit = (NdrpServerOutInit)((uintptr_t)offsetNdrpServerOutInit);
+    realNdr64pServerOutInit = (Ndr64pServerOutInit)((uintptr_t)offsetNdr64pServerOutInit);
 
 	std::wostringstream woaddr;
 	woaddr << "realNdrpServerOutInit: " << realNdrpServerOutInit;
